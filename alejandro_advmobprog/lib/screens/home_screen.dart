@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:provider/provider.dart';
 
-import 'product_screen.dart';
-import 'cart_screen.dart';
-import 'settings_screen.dart';
+import '../models/user.dart';
+import '../providers/cart_provider.dart';
 import '../widgets/custom_text.dart';
+import 'cart_screen.dart';
+import 'product_screen.dart';
+import 'profile_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  final String username;
+  // Enhancement 3:
+  // The authenticated user is passed from the sign-in or splash screen.
+  final User user;
 
-  const HomeScreen({super.key, this.username = ''});
+  const HomeScreen({super.key, required this.user});
 
-  static HomeScreenState? of(BuildContext context) =>
-      context.findAncestorStateOfType<HomeScreenState>();
+  static HomeScreenState? of(BuildContext context) {
+    return context.findAncestorStateOfType<HomeScreenState>();
+  }
 
   @override
   State<HomeScreen> createState() => HomeScreenState();
@@ -22,16 +29,30 @@ class HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   final PageController _pageController = PageController();
 
-  // Custom light blue palette accents matching your theme
   final Color _accentBlue = Colors.lightBlue.shade600;
-  final Color _lightBlueBg = Colors.lightBlue.shade50;
 
-  // Public method to switch tabs dynamically (e.g., jump to Cart tab index 1)
+  @override
+  void initState() {
+    super.initState();
+
+    // Enhancement 3:
+    // Use the logged-in user's ID when loading the cart.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final cartProvider = context.read<CartProvider>();
+
+      cartProvider.setUserId(widget.user.id);
+      cartProvider.loadCart();
+    });
+  }
+
   void switchToTab(int index) {
     if (mounted) {
       setState(() {
         _selectedIndex = index;
       });
+
       _pageController.jumpToPage(index);
     }
   }
@@ -46,7 +67,7 @@ class HomeScreenState extends State<HomeScreen> {
       child: Scaffold(
         appBar: AppBar(
           automaticallyImplyLeading: false,
-          elevation: 0, // Clean flat AppBar look
+          elevation: 0,
           backgroundColor: theme.colorScheme.surface,
           surfaceTintColor: Colors.transparent,
           bottom: PreferredSize(
@@ -74,7 +95,9 @@ class HomeScreenState extends State<HomeScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const SettingsScreen(),
+                      builder: (context) {
+                        return const SettingsScreen();
+                      },
                     ),
                   );
                 },
@@ -85,10 +108,13 @@ class HomeScreenState extends State<HomeScreen> {
         body: PageView(
           physics: const NeverScrollableScrollPhysics(),
           controller: _pageController,
-          children: const <Widget>[
-            ProductScreen(),
-            CartScreen(),
-            Center(child: Text('Profile')),
+          children: <Widget>[
+            const ProductScreen(),
+            const CartScreen(),
+
+            // Enhancement 3:
+            // Render the authenticated user's saved data.
+            ProfileScreen(user: widget.user),
           ],
           onPageChanged: (page) {
             setState(() {

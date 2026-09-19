@@ -16,6 +16,7 @@ dependencies:
   flutter_screenutil: ^5.9.3
   flutter_dotenv: ^6.0.1
   http: ^1.6.0
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
@@ -28,4 +29,4 @@ flutter:
 
   assets:
     - assets/.env
-    - assets/images/nudexchange_logo.png
+    - assets/images/

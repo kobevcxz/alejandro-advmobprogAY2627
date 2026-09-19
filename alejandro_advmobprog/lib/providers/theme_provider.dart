@@ -9,8 +9,7 @@ class ThemeProvider extends ChangeNotifier {
     return ThemeData(
       brightness: Brightness.light,
       useMaterial3: true,
-      colorSchemeSeed:
-          Colors.lightBlue, // Changed from default violet to light blue
+      colorSchemeSeed: Colors.lightBlue,
     );
   }
 
@@ -18,8 +17,7 @@ class ThemeProvider extends ChangeNotifier {
     return ThemeData(
       brightness: Brightness.dark,
       useMaterial3: true,
-      colorSchemeSeed:
-          Colors.lightBlueAccent, // Consistent light blue accent for dark mode
+      colorSchemeSeed: Colors.lightBlueAccent,
     );
   }
 

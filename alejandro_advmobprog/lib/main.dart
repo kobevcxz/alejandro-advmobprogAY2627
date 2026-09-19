@@ -1,17 +1,22 @@
-// packages
+// Packages
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
-// screens
+// Models
+import 'models/user.dart';
+
+// Screens
 import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/signin_screen.dart';
+import 'screens/splash_screen.dart';
 
-// providers
+// Providers
 import 'providers/theme_provider.dart';
-import 'providers/cart_provider.dart'; // Added CartProvider import
+import 'providers/cart_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +25,7 @@ void main() async {
     _,
   ) async {
     await dotenv.load(fileName: 'assets/.env');
+
     runApp(const RolesAdvMobProg());
   });
 }
@@ -32,10 +38,10 @@ class RolesAdvMobProg extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        // Added CartProvider and called loadCart() on startup
-        ChangeNotifierProvider(
-          create: (_) => CartProvider(userId: 1)..loadCart(),
-        ),
+
+        // Enhancement 3:
+        // The user ID will be assigned after successful authentication.
+        ChangeNotifierProvider(create: (_) => CartProvider()),
       ],
       child: ScreenUtilInit(
         designSize: const Size(412, 715),
@@ -46,12 +52,28 @@ class RolesAdvMobProg extends StatelessWidget {
 
           return MaterialApp(
             debugShowCheckedModeBanner: false,
+            title: 'NUBD Exchange',
             theme: themeModel.lightTheme,
             darkTheme: themeModel.darkTheme,
             themeMode: themeModel.isDark ? ThemeMode.dark : ThemeMode.light,
-            title: 'E-Commerce App',
-            home: HomeScreen(),
-            routes: {'/settings': (context) => const SettingsScreen()},
+
+            // Enhancement 1:
+            // Always open the splash screen first to check authentication.
+            initialRoute: '/splash',
+
+            routes: {
+              '/splash': (context) => const SplashScreen(),
+              '/signin': (context) => const SignInScreen(),
+              '/settings': (context) => const SettingsScreen(),
+
+              // Enhancement 2 and 3:
+              // Receive the authenticated user from sign-in or splash.
+              '/home': (context) {
+                final user = ModalRoute.of(context)!.settings.arguments as User;
+
+                return HomeScreen(user: user);
+              },
+            },
           );
         },
       ),

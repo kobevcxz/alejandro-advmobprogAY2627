@@ -24,7 +24,6 @@ class _CartScreenState extends State<CartScreen> {
   @override
   Widget build(BuildContext context) {
     final cartProvider = context.watch<CartProvider>();
-    final theme = Theme.of(context);
 
     return Scaffold(
       body: FutureBuilder<void>(

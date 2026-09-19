@@ -6,33 +6,63 @@ import '../services/cart_service.dart';
 
 class CartProvider extends ChangeNotifier {
   final CartService _cartService = CartService();
-  final int userId;
+
+  // Enhancement 3:
+  // The user ID will come from the authenticated user's saved data.
+  int? userId;
 
   Cart? _cart;
   Future<void>? _loadFuture;
 
-  CartProvider({this.userId = 2});
+  CartProvider({this.userId});
 
   Cart? get cart => _cart;
 
+  // Enhancement 3:
+  // Updates the cart whenever a different user signs in.
+  void setUserId(int loggedInUserId) {
+    if (userId == loggedInUserId) {
+      return;
+    }
+
+    userId = loggedInUserId;
+    _cart = null;
+    _loadFuture = null;
+
+    notifyListeners();
+  }
+
   Future<void> loadCart() {
+    if (userId == null) {
+      return Future.value();
+    }
+
     return _loadFuture ??= _loadCart();
   }
 
   Future<void> _loadCart() async {
-    _cart = await _cartService.getCartByUserId(userId);
+    // Enhancement 3:
+    // Load the cart using the authenticated user's ID.
+    _cart = await _cartService.getCartByUserId(userId!);
     notifyListeners();
   }
 
   Future<void> addProduct(Product product) async {
+    if (userId == null) {
+      throw Exception('No authenticated user found.');
+    }
+
+    final activeUserId = userId!;
+
     final serverResponseCart = await _cartService.addToCart(
-      userId: userId,
+      userId: activeUserId,
       products: [
         {'id': product.id, 'quantity': 1},
       ],
     );
 
     final activeCartItemList = List<CartProduct>.from(_cart?.products ?? []);
+
     final matchedProductIndex = activeCartItemList.indexWhere(
       (item) => item.id == product.id,
     );
@@ -50,6 +80,7 @@ class CartProvider extends ChangeNotifier {
 
     if (matchedProductIndex >= 0) {
       final existingItem = activeCartItemList[matchedProductIndex];
+
       activeCartItemList[matchedProductIndex] = _withQuantity(
         newItemEntry,
         existingItem.quantity + 1,
@@ -63,13 +94,14 @@ class CartProvider extends ChangeNotifier {
       products: activeCartItemList,
       total: _total(activeCartItemList, discounted: false),
       discountedTotal: _total(activeCartItemList, discounted: true),
-      userId: userId,
+      userId: activeUserId,
       totalProducts: activeCartItemList.length,
       totalQuantity: activeCartItemList.fold(
         0,
         (sum, item) => sum + item.quantity,
       ),
     );
+
     notifyListeners();
   }
 
@@ -80,11 +112,13 @@ class CartProvider extends ChangeNotifier {
 
     final itemList = List<CartProduct>.from(_cart!.products);
     final targetIndex = itemList.indexOf(item);
+
     if (targetIndex < 0) {
       return;
     }
 
     final updatedQuantity = item.quantity + change;
+
     if (updatedQuantity <= 0) {
       itemList.removeAt(targetIndex);
     } else {
@@ -100,11 +134,13 @@ class CartProvider extends ChangeNotifier {
       totalProducts: itemList.length,
       totalQuantity: itemList.fold(0, (sum, product) => sum + product.quantity),
     );
+
     notifyListeners();
   }
 
   CartProduct _withQuantity(CartProduct item, int quantity) {
     final netUnitPrice = item.price * (1 - item.discountPercentage / 100);
+
     return CartProduct(
       id: item.id,
       title: item.title,
@@ -119,9 +155,11 @@ class CartProvider extends ChangeNotifier {
 
   double _total(List<CartProduct> products, {required bool discounted}) {
     double accumulatedSum = 0;
-    for (var item in products) {
+
+    for (final item in products) {
       accumulatedSum += discounted ? item.discountedTotal : item.total;
     }
+
     return accumulatedSum;
   }
 }
