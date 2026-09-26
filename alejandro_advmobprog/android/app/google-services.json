@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "61384851854",
+    "project_id": "advancemobileprogramming",
+    "storage_bucket": "advancemobileprogramming.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:61384851854:android:80347a55312367d8e2a4df",
+        "android_client_info": {
+          "package_name": "com.example.alejandro_advmobprog"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAAIDP3SJSfuVcgzcgkcLeA8DFdTK72Lb0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

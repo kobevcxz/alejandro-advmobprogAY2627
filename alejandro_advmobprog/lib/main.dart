@@ -1,33 +1,33 @@
-// Packages
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
-// Models
+import 'firebase_options.dart';
+
 import 'models/user.dart';
 
-// Screens
 import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/signin_screen.dart';
+import 'screens/signup_screen.dart';
 import 'screens/splash_screen.dart';
 
-// Providers
 import 'providers/theme_provider.dart';
 import 'providers/cart_provider.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]).then((
-    _,
-  ) async {
-    await dotenv.load(fileName: 'assets/.env');
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-    runApp(const RolesAdvMobProg());
-  });
+  await dotenv.load(fileName: 'assets/.env');
+
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  runApp(const RolesAdvMobProg());
 }
 
 class RolesAdvMobProg extends StatelessWidget {
@@ -39,8 +39,6 @@ class RolesAdvMobProg extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
 
-        // Enhancement 3:
-        // The user ID will be assigned after successful authentication.
         ChangeNotifierProvider(create: (_) => CartProvider()),
       ],
       child: ScreenUtilInit(
@@ -57,17 +55,14 @@ class RolesAdvMobProg extends StatelessWidget {
             darkTheme: themeModel.darkTheme,
             themeMode: themeModel.isDark ? ThemeMode.dark : ThemeMode.light,
 
-            // Enhancement 1:
-            // Always open the splash screen first to check authentication.
             initialRoute: '/splash',
 
             routes: {
               '/splash': (context) => const SplashScreen(),
               '/signin': (context) => const SignInScreen(),
+              '/signup': (context) => const SignUpScreen(),
               '/settings': (context) => const SettingsScreen(),
 
-              // Enhancement 2 and 3:
-              // Receive the authenticated user from sign-in or splash.
               '/home': (context) {
                 final user = ModalRoute.of(context)!.settings.arguments as User;
 

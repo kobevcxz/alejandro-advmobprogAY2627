@@ -42,8 +42,12 @@ class HomeScreenState extends State<HomeScreen> {
 
       final cartProvider = context.read<CartProvider>();
 
-      cartProvider.setUserId(widget.user.id);
-      cartProvider.loadCart();
+      if (widget.user.isDummyJson && widget.user.id > 0) {
+        cartProvider.setUserId(widget.user.id);
+        cartProvider.loadCart();
+      } else {
+        cartProvider.clearUser();
+      }
     });
   }
 

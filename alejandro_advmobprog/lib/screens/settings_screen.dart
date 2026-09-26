@@ -1,14 +1,49 @@
-// ENHANCEMENT 3: ADD SETTINGS PAGE TO MOVE THE DARK/LIGHT MODE SWITCH.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/theme_provider.dart';
+import '../services/user_service.dart';
 import '../widgets/custom_text.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
+
+  Future<void> _logout(BuildContext context) async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Log Out'),
+          content: const Text('Are you sure you want to log out?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Log Out'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldLogout != true || !context.mounted) {
+      return;
+    }
+
+    await UserService().logout();
+
+    if (!context.mounted) return;
+
+    Navigator.pushNamedAndRemoveUntil(context, '/signin', (route) => false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,6 +110,27 @@ class SettingsScreen extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+              ),
+              SizedBox(height: 14.h),
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: ListTile(
+                  leading: Icon(Icons.logout, color: Colors.red.shade700),
+                  title: Text(
+                    'Log Out',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.red.shade700,
+                    ),
+                  ),
+                  subtitle: const Text('Sign out of your current account'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _logout(context),
                 ),
               ),
             ],

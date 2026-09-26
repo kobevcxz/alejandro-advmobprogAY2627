@@ -162,4 +162,11 @@ class CartProvider extends ChangeNotifier {
 
     return accumulatedSum;
   }
+
+  void clearUser() {
+    userId = null;
+    _cart = null;
+    _loadFuture = null;
+    notifyListeners();
+  }
 }

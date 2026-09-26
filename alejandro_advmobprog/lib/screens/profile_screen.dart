@@ -1,25 +1,345 @@
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../models/user.dart';
 import '../services/user_service.dart';
 
-// Enhancement 3:
-// Displays the saved authenticated user's information.
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   final User user;
 
   const ProfileScreen({super.key, required this.user});
 
-  Future<void> _logout(BuildContext context) async {
+  @override
+  State<ProfileScreen> createState() {
+    return _ProfileScreenState();
+  }
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final UserService _userService = UserService();
+
+  late User _user;
+
+  bool _isLoading = true;
+  bool _isProcessing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _user = widget.user;
+    _loadUser();
+  }
+
+  Future<void> _loadUser() async {
+    final savedUser = await _userService.getUserData();
+
+    if (!mounted) return;
+
+    setState(() {
+      if (savedUser != null) {
+        _user = savedUser;
+      }
+
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _updateUsername() async {
+    final controller = TextEditingController(text: _user.username);
+
+    final username = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Update Username'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'New Username',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, controller.text.trim());
+              },
+              child: const Text('Update'),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (username == null || username.isEmpty) {
+      return;
+    }
+
+    if (username.length < 3) {
+      _showMessage(
+        'Username must contain at least 3 characters.',
+        isError: true,
+      );
+      return;
+    }
+
+    setState(() {
+      _isProcessing = true;
+    });
+
+    try {
+      final updatedUser = await _userService.updateUsername(username: username);
+
+      if (!mounted) return;
+
+      setState(() {
+        _user = updatedUser;
+      });
+
+      _showMessage('Username updated successfully.');
+    } catch (error) {
+      if (!mounted) return;
+
+      _showMessage(_getErrorMessage(error), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _changePassword() async {
+    final currentPasswordController = TextEditingController();
+
+    final newPasswordController = TextEditingController();
+
+    final confirmPasswordController = TextEditingController();
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Change Password'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: currentPasswordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Current Password',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                SizedBox(height: 14.h),
+                TextField(
+                  controller: newPasswordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'New Password',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                SizedBox(height: 14.h),
+                TextField(
+                  controller: confirmPasswordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Confirm New Password',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, {
+                  'current': currentPasswordController.text,
+                  'new': newPasswordController.text,
+                  'confirm': confirmPasswordController.text,
+                });
+              },
+              child: const Text('Change'),
+            ),
+          ],
+        );
+      },
+    );
+
+    currentPasswordController.dispose();
+    newPasswordController.dispose();
+    confirmPasswordController.dispose();
+
+    if (result == null) {
+      return;
+    }
+
+    final currentPassword = result['current'] ?? '';
+
+    final newPassword = result['new'] ?? '';
+
+    final confirmPassword = result['confirm'] ?? '';
+
+    if (currentPassword.isEmpty ||
+        newPassword.isEmpty ||
+        confirmPassword.isEmpty) {
+      _showMessage('Please complete all password fields.', isError: true);
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      _showMessage(
+        'New password must contain at least 8 characters.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (!RegExp(r'[A-Z]').hasMatch(newPassword) ||
+        !RegExp(r'[a-z]').hasMatch(newPassword) ||
+        !RegExp(r'[0-9]').hasMatch(newPassword)) {
+      _showMessage(
+        'Use an uppercase letter, lowercase letter, and number.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (newPassword != confirmPassword) {
+      _showMessage('The new passwords do not match.', isError: true);
+      return;
+    }
+
+    setState(() {
+      _isProcessing = true;
+    });
+
+    try {
+      await _userService.resetPasswordFromCurrentPassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+        email: _user.email,
+      );
+
+      if (!mounted) return;
+
+      _showMessage('Password changed successfully.');
+    } catch (error) {
+      if (!mounted) return;
+
+      _showMessage(_getErrorMessage(error), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    final passwordController = TextEditingController();
+
+    final password = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Account'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'This action cannot be undone. Enter your password to continue.',
+              ),
+              SizedBox(height: 16.h),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Current Password',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, passwordController.text);
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    passwordController.dispose();
+
+    if (password == null || password.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _isProcessing = true;
+    });
+
+    try {
+      await _userService.deleteAccount(email: _user.email, password: password);
+
+      if (!mounted) return;
+
+      Navigator.pushNamedAndRemoveUntil(context, '/signin', (route) => false);
+    } catch (error) {
+      if (!mounted) return;
+
+      _showMessage(_getErrorMessage(error), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _logout() async {
     final shouldLogout = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Log Out'),
-          content: const Text(
-            'Are you sure you want to log out of your account?',
-          ),
+          content: const Text('Are you sure you want to log out?'),
           actions: [
             TextButton(
               onPressed: () {
@@ -31,9 +351,6 @@ class ProfileScreen extends StatelessWidget {
               onPressed: () {
                 Navigator.pop(dialogContext, true);
               },
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.red.shade600,
-              ),
               child: const Text('Log Out'),
             ),
           ],
@@ -41,154 +358,274 @@ class ProfileScreen extends StatelessWidget {
       },
     );
 
-    if (shouldLogout != true || !context.mounted) {
+    if (shouldLogout != true) {
       return;
     }
 
-    // Enhancement 1:
-    // Remove the saved session when the user logs out.
-    await UserService().logout();
+    setState(() {
+      _isProcessing = true;
+    });
 
-    if (!context.mounted) return;
+    try {
+      await _userService.logout();
 
-    Navigator.pushNamedAndRemoveUntil(context, '/signin', (route) => false);
+      if (!mounted) return;
+
+      Navigator.pushNamedAndRemoveUntil(context, '/signin', (route) => false);
+    } catch (error) {
+      if (!mounted) return;
+
+      _showMessage(_getErrorMessage(error), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    }
+  }
+
+  String _getErrorMessage(Object error) {
+    if (error is firebase_auth.FirebaseAuthException) {
+      switch (error.code) {
+        case 'invalid-credential':
+        case 'wrong-password':
+          return 'The current password is incorrect.';
+        case 'weak-password':
+          return 'Please use a stronger password.';
+        case 'requires-recent-login':
+          return 'Please log in again before continuing.';
+        case 'network-request-failed':
+          return 'Please check your internet connection.';
+        default:
+          return error.message ?? 'The operation could not be completed.';
+      }
+    }
+
+    return error.toString().replaceFirst('Exception: ', '');
+  }
+
+  void _showMessage(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red.shade700 : null,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final Color primaryBlue = Colors.lightBlue.shade600;
-    final Color accentGold = Colors.amber.shade700;
+    final primaryColor = Colors.lightBlue.shade600;
 
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(18.w, 20.h, 18.w, 30.h),
-      child: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 24.h),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(18.r),
-              border: Border.all(color: primaryBlue.withValues(alpha: 0.12)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 12,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
+    if (_isLoading) {
+      return Center(child: CircularProgressIndicator(color: primaryColor));
+    }
+
+    return Stack(
+      children: [
+        RefreshIndicator(
+          onRefresh: _loadUser,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(18.w, 20.h, 18.w, 30.h),
             child: Column(
               children: [
                 Container(
-                  width: 105.w,
-                  height: 105.w,
-                  padding: EdgeInsets.all(4.r),
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 18.w,
+                    vertical: 24.h,
+                  ),
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: accentGold,
+                    color: theme.colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(18.r),
+                    border: Border.all(
+                      color: primaryColor.withValues(alpha: 0.12),
+                    ),
                   ),
-                  child: ClipOval(
-                    child: user.image.isNotEmpty
-                        ? Image.network(
-                            user.image,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) {
-                              return _avatarPlaceholder(primaryBlue);
-                            },
-                          )
-                        : _avatarPlaceholder(primaryBlue),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 105.w,
+                        height: 105.w,
+                        padding: EdgeInsets.all(4.r),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: primaryColor,
+                        ),
+                        child: ClipOval(
+                          child: _user.image.isNotEmpty
+                              ? Image.network(
+                                  _user.image,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) {
+                                    return _avatar(primaryColor);
+                                  },
+                                )
+                              : _avatar(primaryColor),
+                        ),
+                      ),
+                      SizedBox(height: 14.h),
+                      Text(
+                        _user.fullName.isEmpty
+                            ? _user.username
+                            : _user.fullName,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 21.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 5.h),
+                      Text(
+                        '@${_user.username}',
+                        style: TextStyle(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w600,
+                          color: primaryColor,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                SizedBox(height: 14.h),
-                Text(
-                  user.fullName,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 21.sp,
-                    fontWeight: FontWeight.bold,
+                SizedBox(height: 18.h),
+                Container(
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(16.r),
+                  ),
+                  child: Column(
+                    children: [
+                      _information(
+                        Icons.email_outlined,
+                        'Email',
+                        _user.email,
+                        primaryColor,
+                      ),
+                      _divider(),
+                      if (_user.isFirebase) ...[
+                        _information(
+                          Icons.cake_outlined,
+                          'Age',
+                          _user.age == 0
+                              ? 'Not available'
+                              : _user.age.toString(),
+                          primaryColor,
+                        ),
+                        _divider(),
+                        _information(
+                          Icons.phone_outlined,
+                          'Contact Number',
+                          _user.contactNo,
+                          primaryColor,
+                        ),
+                        _divider(),
+                      ] else ...[
+                        _information(
+                          Icons.person_outline,
+                          'Gender',
+                          _capitalize(_user.gender),
+                          primaryColor,
+                        ),
+                        _divider(),
+                        _information(
+                          Icons.badge_outlined,
+                          'User ID',
+                          '#${_user.id}',
+                          primaryColor,
+                        ),
+                        _divider(),
+                      ],
+                      _information(
+                        Icons.login_outlined,
+                        'Login Type',
+                        _user.isFirebase ? 'Firebase' : 'DummyJSON',
+                        primaryColor,
+                      ),
+                    ],
                   ),
                 ),
-                SizedBox(height: 5.h),
-                Text(
-                  '@${user.username}',
-                  style: TextStyle(
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w600,
-                    color: accentGold,
+                if (_user.isFirebase) ...[
+                  SizedBox(height: 18.h),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(16.r),
+                    ),
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: Icon(
+                            Icons.edit_outlined,
+                            color: primaryColor,
+                          ),
+                          title: const Text('Update Username'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: _isProcessing ? null : _updateUsername,
+                        ),
+                        _divider(),
+                        ListTile(
+                          leading: Icon(
+                            Icons.lock_reset_outlined,
+                            color: primaryColor,
+                          ),
+                          title: const Text('Change Password'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: _isProcessing ? null : _changePassword,
+                        ),
+                        _divider(),
+                        ListTile(
+                          leading: Icon(
+                            Icons.delete_forever_outlined,
+                            color: Colors.red.shade700,
+                          ),
+                          title: Text(
+                            'Delete Account',
+                            style: TextStyle(color: Colors.red.shade700),
+                          ),
+                          onTap: _isProcessing ? null : _deleteAccount,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                SizedBox(height: 22.h),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50.h,
+                  child: ElevatedButton.icon(
+                    onPressed: _isProcessing ? null : _logout,
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Log Out'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade600,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.r),
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-
-          SizedBox(height: 18.h),
-
-          Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(16.r),
-              border: Border.all(color: Colors.grey.withValues(alpha: 0.15)),
-            ),
-            child: Column(
-              children: [
-                _profileInformation(
-                  context: context,
-                  icon: Icons.email_outlined,
-                  title: 'Email',
-                  value: user.email,
-                  iconColor: primaryBlue,
-                ),
-                _divider(),
-                _profileInformation(
-                  context: context,
-                  icon: Icons.person_outline,
-                  title: 'Gender',
-                  value: _capitalize(user.gender),
-                  iconColor: primaryBlue,
-                ),
-                _divider(),
-                _profileInformation(
-                  context: context,
-                  icon: Icons.badge_outlined,
-                  title: 'User ID',
-                  value: '#${user.id}',
-                  iconColor: primaryBlue,
-                ),
-              ],
+        ),
+        if (_isProcessing)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withValues(alpha: 0.25),
+              alignment: Alignment.center,
+              child: const CircularProgressIndicator(),
             ),
           ),
-
-          SizedBox(height: 24.h),
-
-          SizedBox(
-            width: double.infinity,
-            height: 50.h,
-            child: ElevatedButton.icon(
-              onPressed: () => _logout(context),
-              icon: const Icon(Icons.logout),
-              label: Text(
-                'Log Out',
-                style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.shade600,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12.r),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 
-  Widget _avatarPlaceholder(Color color) {
+  Widget _avatar(Color color) {
     return Container(
       color: Colors.white,
       alignment: Alignment.center,
@@ -196,13 +633,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _profileInformation({
-    required BuildContext context,
-    required IconData icon,
-    required String title,
-    required String value,
-    required Color iconColor,
-  }) {
+  Widget _information(IconData icon, String title, String value, Color color) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 15.h),
       child: Row(
@@ -211,10 +642,10 @@ class ProfileScreen extends StatelessWidget {
             width: 40.w,
             height: 40.w,
             decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10.r),
             ),
-            child: Icon(icon, size: 21.sp, color: iconColor),
+            child: Icon(icon, size: 21.sp, color: color),
           ),
           SizedBox(width: 13.w),
           Expanded(
@@ -258,6 +689,7 @@ class ProfileScreen extends StatelessWidget {
       return 'Not available';
     }
 
-    return '${value[0].toUpperCase()}${value.substring(1)}';
+    return '${value[0].toUpperCase()}'
+        '${value.substring(1)}';
   }
 }
