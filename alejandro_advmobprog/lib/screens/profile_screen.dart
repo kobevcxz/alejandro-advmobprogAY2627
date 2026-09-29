@@ -46,31 +46,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _updateUsername() async {
-    final controller = TextEditingController(text: _user.username);
+    String enteredUsername = _user.username;
 
     final username = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Update Username'),
-          content: TextField(
-            controller: controller,
+          content: TextFormField(
+            initialValue: _user.username,
             autofocus: true,
             decoration: const InputDecoration(
               labelText: 'New Username',
               border: OutlineInputBorder(),
             ),
+            onChanged: (value) {
+              enteredUsername = value;
+            },
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(dialogContext);
+                Navigator.of(dialogContext).pop();
               },
               child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () {
-                Navigator.pop(dialogContext, controller.text.trim());
+                Navigator.of(dialogContext).pop(enteredUsername.trim());
               },
               child: const Text('Update'),
             ),
@@ -79,9 +82,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
     );
 
-    controller.dispose();
-
-    if (username == null || username.isEmpty) {
+    if (!mounted || username == null || username.isEmpty) {
       return;
     }
 
@@ -90,6 +91,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'Username must contain at least 3 characters.',
         isError: true,
       );
+      return;
+    }
+
+    if (username == _user.username) {
       return;
     }
 
@@ -122,9 +127,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _changePassword() async {
     final currentPasswordController = TextEditingController();
-
     final newPasswordController = TextEditingController();
-
     final confirmPasswordController = TextEditingController();
 
     final result = await showDialog<Map<String, String>>(
@@ -196,9 +199,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     final currentPassword = result['current'] ?? '';
-
     final newPassword = result['new'] ?? '';
-
     final confirmPassword = result['confirm'] ?? '';
 
     if (currentPassword.isEmpty ||
@@ -689,7 +690,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return 'Not available';
     }
 
-    return '${value[0].toUpperCase()}'
-        '${value.substring(1)}';
+    return '${value[0].toUpperCase()}${value.substring(1)}';
   }
 }
