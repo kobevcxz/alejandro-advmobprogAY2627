@@ -28,11 +28,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _messageFocusNode = FocusNode();
 
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _messagesStream;
+
   bool _isSending = false;
+  bool _isMarkingSeen = false;
+  int _previousMessageCount = 0;
 
   @override
   void initState() {
     super.initState();
+
+    _messagesStream = _chatService.getMessagesStream(
+      otherUserId: widget.otherUserId,
+    );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markMessagesAsSeen();
@@ -40,7 +48,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Future<void> _markMessagesAsSeen() async {
-    await _chatService.markMessagesAsSeen(otherUserId: widget.otherUserId);
+    if (_isMarkingSeen) {
+      return;
+    }
+
+    _isMarkingSeen = true;
+
+    try {
+      await _chatService.markMessagesAsSeen(otherUserId: widget.otherUserId);
+    } finally {
+      _isMarkingSeen = false;
+    }
   }
 
   Future<void> _sendMessage() async {
@@ -57,17 +75,28 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _messageController.clear();
 
     try {
-      await _chatService.sendMessage(
-        receiverId: widget.otherUserId,
-        message: message,
-      );
+      await Future.wait([
+        _chatService.sendMessage(
+          receiverId: widget.otherUserId,
+          message: message,
+        ),
+        Future<void>.delayed(const Duration(milliseconds: 500)),
+      ]);
+
+      if (!mounted) {
+        return;
+      }
 
       _messageFocusNode.requestFocus();
-      _scrollToBottom();
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       _messageController.text = message;
+      _messageController.selection = TextSelection.collapsed(
+        offset: message.length,
+      );
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -93,8 +122,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
       );
     });
   }
@@ -104,11 +133,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       return '';
     }
 
-    final dateTime = timestamp.toDate();
-
     return MaterialLocalizations.of(
       context,
-    ).formatTimeOfDay(TimeOfDay.fromDateTime(dateTime));
+    ).formatTimeOfDay(TimeOfDay.fromDateTime(timestamp.toDate()));
   }
 
   @override
@@ -177,9 +204,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           children: [
             Expanded(
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: _chatService.getMessagesStream(
-                  otherUserId: widget.otherUserId,
-                ),
+                stream: _messagesStream,
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return Center(
@@ -205,6 +230,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   final documents = snapshot.data?.docs ?? [];
 
                   if (documents.isEmpty) {
+                    _previousMessageCount = 0;
+
                     return Center(
                       child: Padding(
                         padding: EdgeInsets.all(24.r),
@@ -253,7 +280,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     });
                   }
 
-                  _scrollToBottom();
+                  if (documents.length != _previousMessageCount) {
+                    _previousMessageCount = documents.length;
+                    _scrollToBottom();
+                  }
 
                   return ListView.builder(
                     controller: _scrollController,
@@ -268,7 +298,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
                       final senderId = data['senderId']?.toString() ?? '';
                       final message = data['message']?.toString() ?? '';
-                      final status = data['status']?.toString() ?? 'sent';
+                      final status = data['status']?.toString() ?? 'delivered';
+
                       final timestamp = data['timestamp'] is Timestamp
                           ? data['timestamp'] as Timestamp
                           : null;
@@ -276,25 +307,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       final isCurrentUser = senderId == currentUserId;
                       final isPending = document.metadata.hasPendingWrites;
 
-                      return TweenAnimationBuilder<double>(
-                        duration: Duration(
-                          milliseconds: 220 + (index % 4) * 50,
-                        ),
-                        tween: Tween(begin: 0, end: 1),
-                        builder: (context, animationValue, child) {
-                          return Opacity(
-                            opacity: animationValue,
-                            child: Transform.translate(
-                              offset: Offset(
-                                isCurrentUser
-                                    ? 18 * (1 - animationValue)
-                                    : -18 * (1 - animationValue),
-                                0,
-                              ),
-                              child: child,
-                            ),
-                          );
-                        },
+                      return _AnimatedMessageEntry(
+                        key: ValueKey(document.id),
+                        isCurrentUser: isCurrentUser,
                         child: Align(
                           alignment: isCurrentUser
                               ? Alignment.centerRight
@@ -353,24 +368,32 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                     ),
                                     if (isCurrentUser) ...[
                                       SizedBox(width: 5.w),
-                                      if (isPending)
-                                        Text(
-                                          'Sending...',
-                                          style: TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 9.sp,
-                                          ),
-                                        )
-                                      else
-                                        Icon(
-                                          status == 'seen'
-                                              ? Icons.done_all
-                                              : Icons.done,
-                                          size: 14.sp,
-                                          color: status == 'seen'
-                                              ? Colors.lightBlue.shade100
-                                              : Colors.white70,
+                                      AnimatedSwitcher(
+                                        duration: const Duration(
+                                          milliseconds: 180,
                                         ),
+                                        switchInCurve: Curves.easeOut,
+                                        switchOutCurve: Curves.easeIn,
+                                        child: isPending
+                                            ? Text(
+                                                'Sending...',
+                                                key: const ValueKey('sending'),
+                                                style: TextStyle(
+                                                  color: Colors.white70,
+                                                  fontSize: 9.sp,
+                                                ),
+                                              )
+                                            : Icon(
+                                                status == 'seen'
+                                                    ? Icons.done_all
+                                                    : Icons.done,
+                                                key: ValueKey(status),
+                                                size: 14.sp,
+                                                color: status == 'seen'
+                                                    ? Colors.lightBlue.shade100
+                                                    : Colors.white70,
+                                              ),
+                                      ),
                                     ],
                                   ],
                                 ),
@@ -398,7 +421,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     child: TextField(
                       controller: _messageController,
                       focusNode: _messageFocusNode,
-                      enabled: !_isSending,
                       textCapitalization: TextCapitalization.sentences,
                       minLines: 1,
                       maxLines: 4,
@@ -426,21 +448,30 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     width: 46.w,
                     height: 46.w,
                     child: IconButton.filled(
-                      onPressed: _isSending ? null : _sendMessage,
+                      onPressed: _sendMessage,
                       style: IconButton.styleFrom(
                         backgroundColor: primaryColor,
                         foregroundColor: Colors.white,
                       ),
-                      icon: _isSending
-                          ? SizedBox(
-                              width: 19.w,
-                              height: 19.w,
-                              child: const CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
+                      icon: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        switchInCurve: Curves.easeOut,
+                        switchOutCurve: Curves.easeIn,
+                        child: _isSending
+                            ? SizedBox(
+                                key: const ValueKey('sending'),
+                                width: 19.w,
+                                height: 19.w,
+                                child: const CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.send_rounded,
+                                key: ValueKey('send'),
                               ),
-                            )
-                          : const Icon(Icons.send_rounded),
+                      ),
                     ),
                   ),
                 ],
@@ -450,5 +481,69 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         ),
       ),
     );
+  }
+}
+
+class _AnimatedMessageEntry extends StatefulWidget {
+  final bool isCurrentUser;
+  final Widget child;
+
+  const _AnimatedMessageEntry({
+    super.key,
+    required this.isCurrentUser,
+    required this.child,
+  });
+
+  @override
+  State<_AnimatedMessageEntry> createState() {
+    return _AnimatedMessageEntryState();
+  }
+}
+
+class _AnimatedMessageEntryState extends State<_AnimatedMessageEntry>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animationController;
+  late final Animation<double> _opacityAnimation;
+  late final Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 260),
+    );
+
+    final curvedAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOutCubic,
+    );
+
+    _opacityAnimation = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(curvedAnimation);
+
+    _slideAnimation = Tween<Offset>(
+      begin: Offset(widget.isCurrentUser ? 0.08 : -0.08, 0),
+      end: Offset.zero,
+    ).animate(curvedAnimation);
+
+    _animationController.forward();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacityAnimation,
+      child: SlideTransition(position: _slideAnimation, child: widget.child),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 }
