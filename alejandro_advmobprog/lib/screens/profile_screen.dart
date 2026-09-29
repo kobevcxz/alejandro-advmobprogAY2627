@@ -493,11 +493,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 SizedBox(height: 18.h),
-                Container(
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(16.r),
-                  ),
+                Material(
+                  color: theme.colorScheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(16.r),
+                  clipBehavior: Clip.antiAlias,
                   child: Column(
                     children: [
                       _information(
@@ -551,9 +550,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 if (_user.isFirebase) ...[
                   SizedBox(height: 18.h),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerLow,
+                  Card(
+                    margin: EdgeInsets.zero,
+                    elevation: 0,
+                    color: theme.colorScheme.surfaceContainerLow,
+                    surfaceTintColor: Colors.transparent,
+                    clipBehavior: Clip.antiAlias,
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16.r),
                     ),
                     child: Column(

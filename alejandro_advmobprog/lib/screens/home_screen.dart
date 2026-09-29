@@ -6,13 +6,12 @@ import '../models/user.dart';
 import '../providers/cart_provider.dart';
 import '../widgets/custom_text.dart';
 import 'cart_screen.dart';
+import 'chat_screen.dart';
 import 'product_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  // Enhancement 3:
-  // The authenticated user is passed from the sign-in or splash screen.
   final User user;
 
   const HomeScreen({super.key, required this.user});
@@ -35,35 +34,56 @@ class HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
 
-    // Enhancement 3:
-    // Use the logged-in user's ID when loading the cart.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
       final cartProvider = context.read<CartProvider>();
 
-      if (widget.user.isDummyJson && widget.user.id > 0) {
-        cartProvider.setUserId(widget.user.id);
-        cartProvider.loadCart();
-      } else {
-        cartProvider.clearUser();
-      }
+      final cartUserId = widget.user.isDummyJson && widget.user.id > 0
+          ? widget.user.id
+          : 2;
+
+      cartProvider.setUserId(cartUserId);
+      cartProvider.loadCart();
     });
   }
 
   void switchToTab(int index) {
-    if (mounted) {
-      setState(() {
-        _selectedIndex = index;
-      });
+    if (!mounted) return;
 
-      _pageController.jumpToPage(index);
-    }
+    setState(() {
+      _selectedIndex = index;
+    });
+
+    _pageController.jumpToPage(index);
+  }
+
+  void _openCart() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) {
+          return const CartScreen();
+        },
+      ),
+    );
+  }
+
+  void _openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) {
+          return const SettingsScreen();
+        },
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final bool showFab = _selectedIndex != 1;
+    final bool showCartButton = _selectedIndex != 1;
     final theme = Theme.of(context);
 
     return PopScope(
@@ -82,7 +102,7 @@ class HomeScreenState extends State<HomeScreen> {
               ? Image.asset('assets/images/nudexchange_logo.png', scale: 11.sp)
               : CustomText(
                   text: _selectedIndex == 1
-                      ? 'Cart'
+                      ? 'Chats'
                       : _selectedIndex == 2
                       ? 'Profile'
                       : 'Home',
@@ -90,21 +110,20 @@ class HomeScreenState extends State<HomeScreen> {
                   fontWeight: FontWeight.w700,
                 ),
           actions: [
+            if (showCartButton)
+              IconButton(
+                tooltip: 'Cart',
+                icon: Icon(Icons.shopping_cart_outlined, size: 24.sp),
+                color: theme.colorScheme.onSurface,
+                onPressed: _openCart,
+              ),
             Padding(
               padding: EdgeInsets.only(right: 8.w),
               child: IconButton(
+                tooltip: 'Settings',
                 icon: Icon(Icons.settings_outlined, size: 24.sp),
                 color: theme.colorScheme.onSurface,
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) {
-                        return const SettingsScreen();
-                      },
-                    ),
-                  );
-                },
+                onPressed: _openSettings,
               ),
             ),
           ],
@@ -112,19 +131,16 @@ class HomeScreenState extends State<HomeScreen> {
         body: PageView(
           physics: const NeverScrollableScrollPhysics(),
           controller: _pageController,
-          children: <Widget>[
-            const ProductScreen(),
-            const CartScreen(),
-
-            // Enhancement 3:
-            // Render the authenticated user's saved data.
-            ProfileScreen(user: widget.user),
-          ],
           onPageChanged: (page) {
             setState(() {
               _selectedIndex = page;
             });
           },
+          children: <Widget>[
+            const ProductScreen(),
+            const ChatScreen(),
+            ProfileScreen(user: widget.user),
+          ],
         ),
         floatingActionButton: showFab
             ? FloatingActionButton(
@@ -135,13 +151,7 @@ class HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(16.r),
                 ),
                 onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('Chat opened'),
-                      backgroundColor: _accentBlue,
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
+                  switchToTab(1);
                 },
                 child: const Icon(Icons.chat_bubble_outline),
               )
@@ -160,6 +170,7 @@ class HomeScreenState extends State<HomeScreen> {
             showSelectedLabels: false,
             showUnselectedLabels: false,
             onTap: _onTappedBar,
+            currentIndex: _selectedIndex,
             items: const [
               BottomNavigationBarItem(
                 icon: Icon(Icons.shop_2_outlined),
@@ -167,9 +178,9 @@ class HomeScreenState extends State<HomeScreen> {
                 label: 'Shop',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.shopping_cart_outlined),
-                activeIcon: Icon(Icons.shopping_cart),
-                label: 'Cart',
+                icon: Icon(Icons.chat_bubble_outline),
+                activeIcon: Icon(Icons.chat_bubble),
+                label: 'Chats',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.person_outline),
@@ -177,7 +188,6 @@ class HomeScreenState extends State<HomeScreen> {
                 label: 'Profile',
               ),
             ],
-            currentIndex: _selectedIndex,
           ),
         ),
       ),
