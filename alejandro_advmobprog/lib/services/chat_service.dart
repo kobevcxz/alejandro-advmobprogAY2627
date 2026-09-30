@@ -24,6 +24,75 @@ class ChatService {
     });
   }
 
+  Stream<Map<String, Map<String, dynamic>>> getChatSummariesStream() {
+    final user = _firebaseAuth.currentUser;
+
+    if (user == null) {
+      return Stream.value(<String, Map<String, dynamic>>{});
+    }
+
+    return _firestore
+        .collection('chat_rooms')
+        .where('participants', arrayContains: user.uid)
+        .snapshots()
+        .map((snapshot) {
+          final summaries = <String, Map<String, dynamic>>{};
+
+          for (final document in snapshot.docs) {
+            final data = document.data();
+            final participantsData = data['participants'];
+            final countsData = data['unreadCounts'];
+            final lastMessageAtData = data['lastMessageAt'];
+
+            if (participantsData is! List) {
+              continue;
+            }
+
+            final participants = participantsData
+                .map((participant) => participant.toString())
+                .toList();
+
+            String otherUserId = '';
+
+            for (final participantId in participants) {
+              if (participantId != user.uid) {
+                otherUserId = participantId;
+                break;
+              }
+            }
+
+            if (otherUserId.isEmpty) {
+              continue;
+            }
+
+            int unreadCount = 0;
+
+            if (countsData is Map) {
+              final currentUserCount = countsData[user.uid];
+
+              if (currentUserCount is num) {
+                unreadCount = currentUserCount.toInt();
+              }
+            }
+
+            int lastMessageAt = 0;
+
+            if (lastMessageAtData is Timestamp) {
+              lastMessageAt = lastMessageAtData.millisecondsSinceEpoch;
+            }
+
+            summaries[otherUserId] = {
+              'unreadCount': unreadCount,
+              'lastMessage': data['lastMessage']?.toString() ?? '',
+              'lastMessageAt': lastMessageAt,
+              'lastSenderId': data['lastSenderId']?.toString() ?? '',
+            };
+          }
+
+          return summaries;
+        });
+  }
+
   Future<void> createChatRoom({required String otherUserId}) async {
     final user = _firebaseAuth.currentUser;
 
@@ -32,11 +101,14 @@ class ChatService {
     }
 
     final participantIds = [user.uid, otherUserId]..sort();
-
     final chatRoomId = _createChatRoomId(user.uid, otherUserId);
 
     await _firestore.collection('chat_rooms').doc(chatRoomId).set({
       'participants': participantIds,
+      'unreadCounts': {
+        user.uid: FieldValue.increment(0),
+        otherUserId: FieldValue.increment(0),
+      },
     }, SetOptions(merge: true));
   }
 
@@ -57,7 +129,6 @@ class ChatService {
     }
 
     final participantIds = [user.uid, receiverId]..sort();
-
     final chatRoomId = _createChatRoomId(user.uid, receiverId);
 
     final chatRoomReference = _firestore
@@ -78,12 +149,13 @@ class ChatService {
 
     final batch = _firestore.batch();
 
-    batch.set(chatRoomReference, {
+    batch.update(chatRoomReference, {
       'participants': participantIds,
       'lastMessage': trimmedMessage,
       'lastMessageAt': newMessage.timestamp,
       'lastSenderId': user.uid,
-    }, SetOptions(merge: true));
+      'unreadCounts.$receiverId': FieldValue.increment(1),
+    });
 
     batch.set(messageReference, newMessage.toMap());
 
@@ -118,15 +190,16 @@ class ChatService {
 
     final chatRoomId = _createChatRoomId(user.uid, otherUserId);
 
-    final snapshot = await _firestore
+    final chatRoomReference = _firestore
         .collection('chat_rooms')
-        .doc(chatRoomId)
+        .doc(chatRoomId);
+
+    final snapshot = await chatRoomReference
         .collection('messages')
         .where('receiverId', isEqualTo: user.uid)
         .get();
 
     final batch = _firestore.batch();
-    bool hasUpdates = false;
 
     for (final document in snapshot.docs) {
       final data = document.data();
@@ -135,14 +208,12 @@ class ChatService {
 
       if (senderId == otherUserId && status != 'seen') {
         batch.update(document.reference, {'status': 'seen'});
-
-        hasUpdates = true;
       }
     }
 
-    if (hasUpdates) {
-      await batch.commit();
-    }
+    batch.update(chatRoomReference, {'unreadCounts.${user.uid}': 0});
+
+    await batch.commit();
   }
 
   String _createChatRoomId(String firstUserId, String secondUserId) {
